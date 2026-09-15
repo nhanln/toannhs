@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Question, QuestionLevel, LEVEL_LABELS, COMMON_TOPICS } from '../../types.js';
 import { api } from '../../services/api.js';
 import { MathView } from '../MathView.js';
-import { Plus, Search, Filter, Trash2, Edit3, CheckCircle2, ChevronDown, ChevronUp, RefreshCw, Eye } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit3, CheckCircle2, ChevronDown, ChevronUp, RefreshCw, Eye, UploadCloud, FileText } from 'lucide-react';
+import { ImportDocumentModal } from './ImportDocumentModal.js';
 
 export const QuestionBank: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -16,6 +17,7 @@ export const QuestionBank: React.FC = () => {
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [expandedExplanations, setExpandedExplanations] = useState<Record<number, boolean>>({});
 
@@ -191,7 +193,7 @@ export const QuestionBank: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleResetSeed}
             className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5"
@@ -199,6 +201,15 @@ export const QuestionBank: React.FC = () => {
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Khôi phục mẫu
+          </button>
+
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="px-3.5 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+            title="Tự động trích xuất câu hỏi từ file Word (.docx) hoặc PDF"
+          >
+            <UploadCloud className="w-4 h-4 text-indigo-600" />
+            Tải từ Word / PDF
           </button>
 
           <button
@@ -382,9 +393,24 @@ export const QuestionBank: React.FC = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-900">
-                {editingQuestion ? 'Chỉnh sửa Câu hỏi' : 'Thêm Câu hỏi mới vào Ngân hàng'}
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-slate-900">
+                  {editingQuestion ? 'Chỉnh sửa Câu hỏi' : 'Thêm Câu hỏi mới vào Ngân hàng'}
+                </h2>
+                {!editingQuestion && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setIsImportModalOpen(true);
+                    }}
+                    className="text-xs px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg border border-indigo-200 transition-colors flex items-center gap-1.5"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    Tải từ Word / PDF
+                  </button>
+                )}
+              </div>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1"
@@ -553,6 +579,16 @@ export const QuestionBank: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Import Word / PDF Modal */}
+      <ImportDocumentModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={(count) => {
+          fetchQuestions();
+          alert(`Đã nhập thành công ${count} câu hỏi vào ngân hàng!`);
+        }}
+      />
     </div>
   );
 };

@@ -499,6 +499,23 @@ class Database {
     return newQuestion;
   }
 
+  public createQuestionsBulk(questions: Omit<Question, 'id' | 'createdAt'>[]) {
+    let nextId = this.data.questions.length ? Math.max(...this.data.questions.map(q => q.id)) + 1 : 1;
+    const now = new Date().toISOString();
+    const createdList: Question[] = [];
+    for (const q of questions) {
+      const newQ: Question = {
+        ...q,
+        id: nextId++,
+        createdAt: now
+      };
+      this.data.questions.push(newQ);
+      createdList.push(newQ);
+    }
+    this.save();
+    return createdList;
+  }
+
   public updateQuestion(id: number, updates: Partial<Question>) {
     const idx = this.data.questions.findIndex(q => q.id === id);
     if (idx === -1) return null;

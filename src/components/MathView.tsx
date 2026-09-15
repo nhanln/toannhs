@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import katex from 'katex';
 
 interface MathViewProps {
-  content: string;
+  content?: string;
+  text?: string;
   className?: string;
 }
 
@@ -12,14 +13,15 @@ interface MathViewProps {
  * - Inline math: $ ... $
  * Safe and fast rendering using KaTeX
  */
-export const MathView: React.FC<MathViewProps> = ({ content, className = '' }) => {
+export const MathView: React.FC<MathViewProps> = ({ content, text, className = '' }) => {
+  const actualContent = content ?? text ?? '';
   const renderedHtml = useMemo(() => {
-    if (!content) return '';
+    if (!actualContent) return '';
 
     // Regex to match $$block math$$ or $inline math$
     const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
 
-    const parts = content.split(mathRegex);
+    const parts = actualContent.split(mathRegex);
 
     return parts
       .map((part) => {

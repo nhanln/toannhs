@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from './db.js';
 import { generateToken, verifyPassword, hashPassword, authenticateToken, requireRole, AuthRequest } from './auth.js';
 import { QuestionLevel } from '../src/types.js';
+import { parseUploadedDocument } from './documentParser.js';
 
 export const apiRouter = Router();
 
@@ -138,6 +139,67 @@ apiRouter.post('/questions', authenticateToken, requireRole('teacher', 'admin'),
     return res.json({ question: newQ, message: 'Thêm câu hỏi thành công.' });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// Parse Word (.docx), PDF or raw text to extract questions
+apiRouter.post('/questions/import-document', authenticateToken, requireRole('teacher', 'admin'), async (req, res) => {
+  try {
+    const { base64, mimeType, fileName, rawText, defaultTopic } = req.body;
+    if (!base64 && (!rawText || rawText.trim().length === 0)) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp file Word/PDF hoặc dán nội dung văn bản.' });
+    }
+
+    const result = await parseUploadedDocument({
+      base64,
+      mimeType,
+      fileName,
+      rawText,
+      defaultTopic
+    });
+
+    return res.json({
+      success: true,
+      questions: result.questions,
+      parserUsed: result.parserUsed,
+      total: result.questions.length,
+      rawExtractedText: result.rawExtractedText
+    });
+  } catch (e: any) {
+    console.error('Import document error:', e);
+    return res.status(500).json({ error: e.message || 'Lỗi xử lý file tài liệu.' });
+  }
+});
+
+// Bulk insert approved questions into bank
+apiRouter.post('/questions/bulk', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const { questions } = req.body;
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: 'Danh sách câu hỏi không hợp lệ hoặc đang trống.' });
+    }
+
+    const validQuestions = questions.map(q => ({
+      topic: q.topic || 'Hàm số & Đồ thị',
+      level: q.level || 'nhan_biet',
+      content: q.content,
+      optionA: q.optionA,
+      optionB: q.optionB,
+      optionC: q.optionC,
+      optionD: q.optionD,
+      correctOption: q.correctOption || 'A',
+      explanation: q.explanation || ''
+    }));
+
+    const created = db.createQuestionsBulk(validQuestions);
+    return res.json({
+      success: true,
+      createdCount: created.length,
+      questions: created,
+      message: `Đã lưu thành công ${created.length} câu hỏi vào ngân hàng!`
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || 'Lỗi lưu hàng loạt câu hỏi.' });
   }
 });
 

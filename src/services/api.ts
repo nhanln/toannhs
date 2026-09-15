@@ -19,6 +19,8 @@ export const authStorage = {
   }
 };
 
+const API_BASE = (((import.meta as any).env?.VITE_API_URL as string) || '').replace(/\/$/, '');
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = authStorage.getToken();
   const headers: Record<string, string> = {
@@ -30,7 +32,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`/api${endpoint}`, {
+  const response = await fetch(`${API_BASE}/api${endpoint}`, {
     ...options,
     headers
   });
@@ -76,6 +78,30 @@ export const api = {
     request<{ question: Question; message: string }>('/questions', {
       method: 'POST',
       body: JSON.stringify(data)
+    }),
+
+  createQuestionsBulk: (questions: Omit<Question, 'id' | 'createdAt'>[]) =>
+    request<{ success: boolean; createdCount: number; questions: Question[]; message: string }>('/questions/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ questions })
+    }),
+
+  importDocument: (payload: {
+    base64?: string;
+    mimeType?: string;
+    fileName?: string;
+    rawText?: string;
+    defaultTopic?: string;
+  }) =>
+    request<{
+      success: boolean;
+      questions: Omit<Question, 'id' | 'createdAt'>[];
+      parserUsed: 'gemini-ai' | 'rule-based';
+      total: number;
+      rawExtractedText?: string;
+    }>('/questions/import-document', {
+      method: 'POST',
+      body: JSON.stringify(payload)
     }),
 
   updateQuestion: (id: number, data: Partial<Question>) =>
