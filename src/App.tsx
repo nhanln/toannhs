@@ -14,11 +14,13 @@ import { StudentHistory } from './components/student/StudentHistory.js';
 import { PrintExamView } from './components/PrintExamView.js';
 import { AuthModal } from './components/AuthModal.js';
 import { GuideModal } from './components/GuideModal.js';
+import { StudentTeacherGateway } from './components/StudentTeacherGateway.js';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentTab, setCurrentTab] = useState<string>('bank');
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalRole, setAuthModalRole] = useState<'student' | 'teacher'>('student');
   const [guideModalOpen, setGuideModalOpen] = useState(false);
 
   // Sub-view parameters
@@ -67,6 +69,11 @@ export default function App() {
   const handleLogout = () => {
     authStorage.clearAuth();
     setCurrentUser(null);
+    setAuthModalRole('student');
+  };
+
+  const handleOpenAuth = (role?: 'student' | 'teacher') => {
+    if (role) setAuthModalRole(role);
     setAuthModalOpen(true);
   };
 
@@ -125,71 +132,88 @@ export default function App() {
         currentTab={currentTab}
         onSelectTab={handleSelectTab}
         onLogout={handleLogout}
-        onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenAuth={handleOpenAuth}
         onSwitchUser={handleQuickSwitch}
         onOpenGuide={() => setGuideModalOpen(true)}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Print View Mode */}
-        {currentTab === 'print' && activeExamId && (
-          <PrintExamView
-            examId={activeExamId}
-            onBack={() => setCurrentTab(isTeacher ? 'exams' : 'student-exams')}
+        {!currentUser ? (
+          <StudentTeacherGateway
+            onSuccess={(user) => {
+              setCurrentUser(user);
+              setCurrentTab(user.role === 'student' ? 'student-exams' : 'bank');
+            }}
+            onOpenRegister={(role) => {
+              setAuthModalRole(role);
+              setAuthModalOpen(true);
+            }}
           />
-        )}
-
-        {/* Student Active Exam Room */}
-        {currentTab === 'exam_room' && activeExamId && (
-          <ExamRoom
-            examId={activeExamId}
-            onFinishExam={handleFinishExam}
-            onExit={() => setCurrentTab('student-exams')}
-          />
-        )}
-
-        {/* Exam Review / Score Report */}
-        {currentTab === 'session_review' && activeSessionId && (
-          <ExamResultView
-            sessionId={activeSessionId}
-            onBack={() => setCurrentTab(isTeacher ? 'stats' : 'student-history')}
-            onRetake={handleStartExam}
-          />
-        )}
-
-        {/* Teacher Tab Views */}
-        {isTeacher && (
+        ) : (
           <>
-            {currentTab === 'bank' && <QuestionBank />}
-            {currentTab === 'matrix' && <MatrixGenerator onExamCreated={handleExamCreated} />}
-            {currentTab === 'exams' && (
-              <ExamList
-                onNavigatePrint={handleOpenPrint}
-                onNavigateMatrix={() => setCurrentTab('matrix')}
+            {/* Print View Mode */}
+            {currentTab === 'print' && activeExamId && (
+              <PrintExamView
+                examId={activeExamId}
+                onBack={() => setCurrentTab(isTeacher ? 'exams' : 'student-exams')}
               />
             )}
-            {currentTab === 'stats' && (
-              <TeacherStatsView onViewSessionReview={handleViewSession} />
-            )}
-            {currentTab === 'students' && <StudentList />}
-          </>
-        )}
 
-        {/* Student Tab Views */}
-        {!isTeacher && (
-          <>
-            {currentTab === 'student-exams' && (
-              <StudentExamList
-                onStartExam={handleStartExam}
-                onViewResult={handleViewSession}
+            {/* Student Active Exam Room */}
+            {currentTab === 'exam_room' && activeExamId && (
+              <ExamRoom
+                examId={activeExamId}
+                onFinishExam={handleFinishExam}
+                onExit={() => setCurrentTab('student-exams')}
               />
             )}
-            {currentTab === 'student-history' && (
-              <StudentHistory
-                onViewSession={handleViewSession}
-                onBrowseExams={() => setCurrentTab('student-exams')}
+
+            {/* Exam Review / Score Report */}
+            {currentTab === 'session_review' && activeSessionId && (
+              <ExamResultView
+                sessionId={activeSessionId}
+                onBack={() => setCurrentTab(isTeacher ? 'stats' : 'student-history')}
+                onRetake={handleStartExam}
               />
+            )}
+
+            {/* Teacher Tab Views */}
+            {isTeacher && (
+              <>
+                {currentTab === 'bank' && <QuestionBank />}
+                {currentTab === 'matrix' && <MatrixGenerator onExamCreated={handleExamCreated} />}
+                {currentTab === 'exams' && (
+                  <ExamList
+                    onNavigatePrint={handleOpenPrint}
+                    onNavigateMatrix={() => setCurrentTab('matrix')}
+                  />
+                )}
+                {currentTab === 'stats' && (
+                  <TeacherStatsView onViewSessionReview={handleViewSession} />
+                )}
+                {currentTab === 'students' && (
+                  <StudentList onSwitchToStudent={handleQuickSwitch} />
+                )}
+              </>
+            )}
+
+            {/* Student Tab Views */}
+            {!isTeacher && (
+              <>
+                {currentTab === 'student-exams' && (
+                  <StudentExamList
+                    onStartExam={handleStartExam}
+                    onViewResult={handleViewSession}
+                  />
+                )}
+                {currentTab === 'student-history' && (
+                  <StudentHistory
+                    onViewSession={handleViewSession}
+                    onBrowseExams={() => setCurrentTab('student-exams')}
+                  />
+                )}
+              </>
             )}
           </>
         )}
@@ -217,6 +241,7 @@ export default function App() {
       {/* Auth Modal */}
       <AuthModal
         isOpen={authModalOpen}
+        initialRole={authModalRole}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={(user) => {
           setCurrentUser(user);

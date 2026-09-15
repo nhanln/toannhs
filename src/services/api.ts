@@ -1,4 +1,4 @@
-import { User, Question, Exam, ExamSession, TeacherStats, MatrixConfig, QuestionLevel } from '../types.js';
+import { User, Question, Exam, ExamSession, TeacherStats, MatrixConfig, QuestionLevel, StudentRecord, StudentCreatePayload } from '../types.js';
 
 const TOKEN_KEY = 'mathexam_auth_token';
 const USER_KEY = 'mathexam_auth_user';
@@ -166,18 +166,36 @@ export const api = {
   // Teacher Stats & Students
   getTeacherStats: () => request<{ stats: TeacherStats }>('/stats/overview'),
 
-  getStudents: () =>
+  getStudents: () => request<{ students: StudentRecord[] }>('/students'),
+
+  createStudent: (payload: StudentCreatePayload) =>
+    request<{ success: boolean; message: string; student: StudentRecord }>('/students', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
+  createStudentsBulk: (students: StudentCreatePayload[]) =>
     request<{
-      students: Array<{
-        id: number;
-        username: string;
-        fullName: string;
-        className: string;
-        totalExamsTaken: number;
-        avgScore: number;
-        createdAt: string;
-      }>;
-    }>('/students'),
+      success: boolean;
+      created: StudentRecord[];
+      errors: string[];
+      totalCreated: number;
+      message: string;
+    }>('/students/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ students })
+    }),
+
+  updateStudent: (id: number, data: { fullName?: string; className?: string; password?: string; username?: string }) =>
+    request<{ success: boolean; message: string; student: StudentRecord }>(`/students/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
+  deleteStudent: (id: number) =>
+    request<{ success: boolean; message: string }>(`/students/${id}`, {
+      method: 'DELETE'
+    }),
 
   resetSampleData: () => request<{ message: string }>('/reset-data', { method: 'POST' })
 };

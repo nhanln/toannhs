@@ -1,4 +1,6 @@
 import mammoth from 'mammoth';
+// @ts-ignore
+import { PDFParse } from 'pdf-parse';
 import { GoogleGenAI } from '@google/genai';
 import { QuestionLevel, COMMON_TOPICS } from '../src/types.js';
 
@@ -269,7 +271,7 @@ export async function parseUploadedDocument(params: {
     fileName.toLowerCase().endsWith('.docx') ||
     fileName.toLowerCase().endsWith('.doc');
 
-  // 1. Extract text from Word if base64 provided
+  // 1. Extract text from Word or PDF if base64 provided
   if (base64 && isDocx) {
     try {
       const buffer = Buffer.from(base64, 'base64');
@@ -278,6 +280,17 @@ export async function parseUploadedDocument(params: {
     } catch (err: any) {
       console.error('Word extraction error:', err);
       throw new Error(`Không thể đọc file Word (.docx): ${err.message || 'File không đúng định dạng'}`);
+    }
+  } else if (base64 && isPdf) {
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const parser = new (PDFParse as any)({ data: buffer });
+      const pdfData = await parser.getText();
+      if (pdfData && pdfData.text) {
+        extractedText = pdfData.text;
+      }
+    } catch (pdfErr: any) {
+      console.warn('PDF extraction with pdf-parse error:', pdfErr?.message);
     }
   }
 

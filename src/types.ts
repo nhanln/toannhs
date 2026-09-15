@@ -85,6 +85,23 @@ export const LEVEL_LABELS: Record<QuestionLevel, { label: string; color: string;
   van_dung_cao: { label: 'Vận dụng cao', color: 'text-rose-700 bg-rose-50 border-rose-200', badge: 'bg-rose-100 text-rose-800' },
 };
 
+export interface StudentRecord {
+  id: number;
+  username: string;
+  fullName: string;
+  className: string;
+  totalExamsTaken: number;
+  avgScore: number;
+  createdAt: string;
+}
+
+export interface StudentCreatePayload {
+  username: string;
+  fullName: string;
+  className?: string;
+  password?: string;
+}
+
 export const COMMON_TOPICS = [
   'Hàm số & Đồ thị',
   'Mũ & Logarit',

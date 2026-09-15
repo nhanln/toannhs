@@ -1,13 +1,13 @@
 import React from 'react';
 import { User } from '../types.js';
-import { BookOpen, Award, FileText, BarChart3, Users, Printer, LogOut, Sparkles, HelpCircle } from 'lucide-react';
+import { BookOpen, Award, FileText, BarChart3, Users, Printer, LogOut, Sparkles, HelpCircle, GraduationCap, School } from 'lucide-react';
 
 interface NavbarProps {
   user: User | null;
   currentTab: string;
   onSelectTab: (tab: string) => void;
   onLogout: () => void;
-  onOpenAuth: () => void;
+  onOpenAuth: (role?: 'student' | 'teacher') => void;
   onSwitchUser: (username: string) => void;
   onOpenGuide: () => void;
 }
@@ -173,12 +173,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             ) : (
-              <button
-                onClick={onOpenAuth}
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
-              >
-                Đăng nhập
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onOpenAuth('student')}
+                  className="px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <GraduationCap className="w-4 h-4 text-emerald-600" />
+                  <span>Cổng Học Sinh</span>
+                </button>
+                <button
+                  onClick={() => onOpenAuth('teacher')}
+                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <School className="w-4 h-4" />
+                  <span>Cổng Giáo Viên</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

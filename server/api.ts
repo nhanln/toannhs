@@ -361,6 +361,87 @@ apiRouter.get('/students', authenticateToken, requireRole('teacher', 'admin'), (
   return res.json({ students });
 });
 
+apiRouter.post('/students', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const { username, fullName, className, password } = req.body;
+    if (!username || !fullName) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ họ tên và tên đăng nhập.' });
+    }
+
+    if (username.trim().length < 3) {
+      return res.status(400).json({ error: 'Tên đăng nhập phải có ít nhất 3 ký tự.' });
+    }
+
+    const student = db.createStudent({
+      username,
+      fullName,
+      className,
+      password: password || '123456'
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Đã tạo thành công tài khoản học sinh "${student.fullName}"!`,
+      student
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Lỗi khi tạo tài khoản học sinh.' });
+  }
+});
+
+apiRouter.post('/students/bulk', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const { students } = req.body;
+    if (!Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ error: 'Danh sách học sinh không hợp lệ.' });
+    }
+
+    const result = db.createStudentsBulk(students);
+    return res.json({
+      success: true,
+      created: result.created,
+      errors: result.errors,
+      totalCreated: result.totalCreated,
+      message: `Đã tạo thành công ${result.totalCreated} tài khoản học sinh.`
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Lỗi khi tạo danh sách học sinh.' });
+  }
+});
+
+apiRouter.put('/students/:id', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const studentId = Number(req.params.id);
+    const { fullName, className, password, username } = req.body;
+    const updated = db.updateStudent(studentId, {
+      fullName,
+      className,
+      password,
+      username
+    });
+    return res.json({
+      success: true,
+      message: 'Cập nhật tài khoản học sinh thành công.',
+      student: updated
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Lỗi khi cập nhật tài khoản học sinh.' });
+  }
+});
+
+apiRouter.delete('/students/:id', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const studentId = Number(req.params.id);
+    db.deleteStudent(studentId);
+    return res.json({
+      success: true,
+      message: 'Đã xóa tài khoản học sinh thành công.'
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Lỗi khi xóa tài khoản học sinh.' });
+  }
+});
+
 // --- Reset / Re-seed sample data ---
 apiRouter.post('/reset-data', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
   db.initializeDefaultData();

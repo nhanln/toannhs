@@ -463,6 +463,119 @@ class Database {
     });
   }
 
+  public createStudent(payload: { username: string; fullName: string; className?: string; password?: string }) {
+    const cleanUsername = payload.username.trim();
+    const existing = this.findUserByUsername(cleanUsername);
+    if (existing) {
+      throw new Error(`Tên đăng nhập "${cleanUsername}" đã tồn tại trên hệ thống.`);
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const passwordHash = bcrypt.hashSync(payload.password?.trim() || '123456', salt);
+    const nextId = this.data.users.length ? Math.max(...this.data.users.map(u => u.id)) + 1 : 1;
+
+    const newUser = {
+      id: nextId,
+      username: cleanUsername,
+      passwordHash,
+      role: 'student' as const,
+      fullName: payload.fullName.trim(),
+      className: (payload.className || '12A1').trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    this.data.users.push(newUser);
+    this.save();
+
+    return {
+      id: newUser.id,
+      username: newUser.username,
+      fullName: newUser.fullName,
+      className: newUser.className,
+      totalExamsTaken: 0,
+      avgScore: 0,
+      createdAt: newUser.createdAt
+    };
+  }
+
+  public createStudentsBulk(students: Array<{ username: string; fullName: string; className?: string; password?: string }>) {
+    const created: any[] = [];
+    const errors: string[] = [];
+
+    for (const item of students) {
+      const cleanUsername = item.username?.trim();
+      const cleanFullName = item.fullName?.trim();
+      if (!cleanUsername || !cleanFullName) {
+        errors.push('Bỏ qua mục thiếu họ tên hoặc mã đăng nhập.');
+        continue;
+      }
+
+      if (this.findUserByUsername(cleanUsername)) {
+        errors.push(`Tên đăng nhập "${cleanUsername}" (${cleanFullName}) đã tồn tại.`);
+        continue;
+      }
+
+      try {
+        const student = this.createStudent({
+          username: cleanUsername,
+          fullName: cleanFullName,
+          className: item.className || '12A1',
+          password: item.password || '123456'
+        });
+        created.push(student);
+      } catch (err: any) {
+        errors.push(err.message || `Lỗi tạo học sinh ${cleanUsername}`);
+      }
+    }
+
+    return { created, errors, totalCreated: created.length };
+  }
+
+  public updateStudent(id: number, data: { fullName?: string; className?: string; password?: string; username?: string }) {
+    const user = this.data.users.find(u => u.id === id && u.role === 'student');
+    if (!user) throw new Error('Không tìm thấy tài khoản học sinh cần cập nhật.');
+
+    if (data.username && data.username.trim().toLowerCase() !== user.username.toLowerCase()) {
+      const existing = this.findUserByUsername(data.username.trim());
+      if (existing) {
+        throw new Error(`Tên đăng nhập "${data.username}" đã được sử dụng.`);
+      }
+      user.username = data.username.trim();
+    }
+
+    if (data.fullName && data.fullName.trim()) user.fullName = data.fullName.trim();
+    if (data.className && data.className.trim()) user.className = data.className.trim();
+    if (data.password && data.password.trim()) {
+      const salt = bcrypt.genSaltSync(10);
+      user.passwordHash = bcrypt.hashSync(data.password.trim(), salt);
+    }
+
+    this.save();
+
+    const studentSessions = this.data.examSessions.filter(es => es.studentId === user.id && es.status === 'completed');
+    const avgScore = studentSessions.length
+      ? Number((studentSessions.reduce((acc, curr) => acc + (curr.score || 0), 0) / studentSessions.length).toFixed(2))
+      : 0;
+
+    return {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      className: user.className,
+      totalExamsTaken: studentSessions.length,
+      avgScore,
+      createdAt: user.createdAt
+    };
+  }
+
+  public deleteStudent(id: number) {
+    const idx = this.data.users.findIndex(u => u.id === id && u.role === 'student');
+    if (idx === -1) throw new Error('Không tìm thấy tài khoản học sinh cần xóa.');
+    this.data.users.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
   // --- Questions ---
   public getQuestions(filters?: { topic?: string; level?: QuestionLevel; search?: string }) {
     let result = [...this.data.questions];
