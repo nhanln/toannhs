@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* KaTeX custom tweaks */
+.katex {
+  font-size: 1.05em !important;
+  text-rendering: optimizeLegibility;
+}
+
+.katex-display {
+  margin: 0.5em 0 !important;
+}
+
+/* Print Specific Rules (@media print) */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.35 !important;
+  }
+
+  .no-print,
+  nav,
+  header,
+  footer,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Compact math and options for print layout */
+  .print-option {
+    display: inline-block;
+    min-width: 23%;
+    margin-bottom: 4px;
+  }
+}
+
