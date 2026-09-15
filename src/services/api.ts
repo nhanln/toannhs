@@ -1,4 +1,4 @@
-import { User, Question, Exam, ExamSession, TeacherStats, MatrixConfig, QuestionLevel, StudentRecord, StudentCreatePayload } from '../types.js';
+import { User, Question, Exam, ExamSession, TeacherStats, MatrixConfig, QuestionLevel, StudentRecord, StudentCreatePayload, Folder, FolderType } from '../types.js';
 
 const TOKEN_KEY = 'mathexam_auth_token';
 const USER_KEY = 'mathexam_auth_user';
@@ -62,12 +62,50 @@ export const api = {
 
   getMe: () => request<{ user: User }>('/auth/me'),
 
+  // Folders (Thư mục Câu hỏi & Đề thi)
+  getFolders: (type?: FolderType) => {
+    const qs = type ? `?type=${type}` : '';
+    return request<{ folders: Folder[] }>(`/folders${qs}`);
+  },
+
+  getFolder: (id: number) => request<{ folder: Folder }>(`/folders/${id}`),
+
+  createFolder: (payload: { name: string; type: FolderType; description?: string; color?: string }) =>
+    request<{ folder: Folder; message: string }>('/folders', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
+  updateFolder: (id: number, data: Partial<Folder>) =>
+    request<{ folder: Folder; message: string }>(`/folders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
+  deleteFolder: (id: number) =>
+    request<{ success: boolean; message: string }>(`/folders/${id}`, {
+      method: 'DELETE'
+    }),
+
+  moveQuestionsToFolder: (questionIds: number[], folderId: number | null) =>
+    request<{ success: boolean; count: number; message: string }>('/questions/move', {
+      method: 'POST',
+      body: JSON.stringify({ questionIds, folderId })
+    }),
+
+  moveExamsToFolder: (examIds: number[], folderId: number | null) =>
+    request<{ success: boolean; count: number; message: string }>('/exams/move', {
+      method: 'POST',
+      body: JSON.stringify({ examIds, folderId })
+    }),
+
   // Questions
-  getQuestions: (params?: { topic?: string; level?: QuestionLevel | 'all'; search?: string }) => {
+  getQuestions: (params?: { topic?: string; level?: QuestionLevel | 'all'; search?: string; folderId?: string | number }) => {
     const query = new URLSearchParams();
     if (params?.topic && params.topic !== 'all') query.set('topic', params.topic);
     if (params?.level && params.level !== 'all') query.set('level', params.level);
     if (params?.search) query.set('search', params.search);
+    if (params?.folderId !== undefined && params.folderId !== 'all') query.set('folderId', String(params.folderId));
     const qs = query.toString();
     return request<{ questions: Question[]; total: number }>(`/questions${qs ? `?${qs}` : ''}`);
   },
@@ -80,10 +118,10 @@ export const api = {
       body: JSON.stringify(data)
     }),
 
-  createQuestionsBulk: (questions: Omit<Question, 'id' | 'createdAt'>[]) =>
+  createQuestionsBulk: (questions: Omit<Question, 'id' | 'createdAt'>[], folderId?: number | null) =>
     request<{ success: boolean; createdCount: number; questions: Question[]; message: string }>('/questions/bulk', {
       method: 'POST',
-      body: JSON.stringify({ questions })
+      body: JSON.stringify({ questions, folderId })
     }),
 
   importDocument: (payload: {
@@ -116,7 +154,12 @@ export const api = {
     }),
 
   // Exams
-  getExams: () => request<{ exams: Exam[] }>('/exams'),
+  getExams: (params?: { folderId?: string | number }) => {
+    const query = new URLSearchParams();
+    if (params?.folderId !== undefined && params.folderId !== 'all') query.set('folderId', String(params.folderId));
+    const qs = query.toString();
+    return request<{ exams: Exam[] }>(`/exams${qs ? `?${qs}` : ''}`);
+  },
 
   getExam: (id: number) => request<{ exam: Exam }>(`/exams/${id}`),
 
@@ -129,11 +172,18 @@ export const api = {
     shuffleQuestions?: boolean;
     startTime?: string;
     endTime?: string;
+    folderId?: number | null;
     matrix: MatrixConfig;
   }) =>
     request<{ message: string; exam: Exam; questionsCount: number }>('/exams/generate-matrix', {
       method: 'POST',
       body: JSON.stringify(payload)
+    }),
+
+  updateExam: (id: number, data: Partial<Exam>) =>
+    request<{ exam: Exam; message: string }>(`/exams/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
     }),
 
   deleteExam: (id: number) =>

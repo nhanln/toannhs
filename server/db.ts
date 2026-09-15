@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
-import { User, Question, Exam, ExamSession, QuestionLevel } from '../src/types.js';
+import { User, Question, Exam, ExamSession, QuestionLevel, Folder, FolderType } from '../src/types.js';
 
 interface DatabaseSchema {
   users: Array<User & { passwordHash: string }>;
+  folders: Folder[];
   questions: Question[];
   exams: Exam[];
   examQuestions: Array<{ examId: number; questionId: number; orderIndex: number }>;
@@ -18,6 +19,58 @@ const DB_FILE = path.join(DATA_DIR, 'database.json');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+// Initial Sample Folders
+const INITIAL_FOLDERS: Folder[] = [
+  {
+    id: 1,
+    name: 'Chuyên đề Đạo hàm & Khảo sát hàm số',
+    type: 'question',
+    description: 'Tính đơn điệu, cực trị, tiệm cận và khảo sát sự biến thiên của đồ thị hàm số',
+    color: 'indigo',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 2,
+    name: 'Chuyên đề Mũ & Logarit',
+    type: 'question',
+    description: 'Lũy thừa, công thức logarit, phương trình và bất phương trình mũ - logarit',
+    color: 'sky',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 3,
+    name: 'Chuyên đề Nguyên hàm & Tích phân',
+    type: 'question',
+    description: 'Nguyên hàm cơ bản, tích phân từng phần và ứng dụng hình học tính diện tích, thể tích',
+    color: 'emerald',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 4,
+    name: 'Chuyên đề Hình học Oxyz',
+    type: 'question',
+    description: 'Hệ trục tọa độ không gian, phương trình mặt phẳng, đường thẳng và mặt cầu',
+    color: 'amber',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 5,
+    name: 'Đề thi thử THPT Quốc Gia',
+    type: 'exam',
+    description: 'Các bộ đề thi thử tốt nghiệp THPT chuẩn cấu trúc phân hóa ma trận Bộ GD&ĐT',
+    color: 'indigo',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 6,
+    name: 'Đề kiểm tra Giữa kỳ & Định kỳ',
+    type: 'exam',
+    description: 'Đề kiểm tra khảo sát và đánh giá 1 tiết cho các lớp 12A1, 12A2',
+    color: 'rose',
+    createdAt: new Date().toISOString()
+  }
+];
 
 // Initial Question Bank with Rich LaTeX Math
 const INITIAL_QUESTIONS: Omit<Question, 'id'>[] = [
@@ -287,7 +340,28 @@ class Database {
     try {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        return JSON.parse(raw);
+        const parsed: DatabaseSchema = JSON.parse(raw);
+        if (!parsed.folders || !Array.isArray(parsed.folders) || parsed.folders.length === 0) {
+          parsed.folders = [...INITIAL_FOLDERS];
+          // Assign initial questions into folders by topic if not yet assigned
+          if (parsed.questions) {
+            parsed.questions.forEach(q => {
+              if (q.folderId === undefined) {
+                if (q.topic?.includes('Hàm số')) q.folderId = 1;
+                else if (q.topic?.includes('Mũ') || q.topic?.includes('Logarit')) q.folderId = 2;
+                else if (q.topic?.includes('Nguyên hàm') || q.topic?.includes('Tích phân')) q.folderId = 3;
+                else if (q.topic?.includes('Oxyz') || q.topic?.includes('đa diện')) q.folderId = 4;
+                else q.folderId = null;
+              }
+            });
+          }
+          if (parsed.exams) {
+            parsed.exams.forEach(e => {
+              if (e.folderId === undefined) e.folderId = 5;
+            });
+          }
+        }
+        return parsed;
       }
     } catch (e) {
       console.error('Error reading database file, re-initializing...', e);
@@ -337,11 +411,20 @@ class Database {
       }
     ];
 
-    const questions: Question[] = INITIAL_QUESTIONS.map((q, idx) => ({
-      ...q,
-      id: idx + 1,
-      createdAt: new Date().toISOString()
-    }));
+    const questions: Question[] = INITIAL_QUESTIONS.map((q, idx) => {
+      let fId: number | null = null;
+      if (q.topic?.includes('Hàm số')) fId = 1;
+      else if (q.topic?.includes('Mũ') || q.topic?.includes('Logarit')) fId = 2;
+      else if (q.topic?.includes('Nguyên hàm') || q.topic?.includes('Tích phân')) fId = 3;
+      else if (q.topic?.includes('Oxyz') || q.topic?.includes('đa diện')) fId = 4;
+
+      return {
+        ...q,
+        id: idx + 1,
+        folderId: fId,
+        createdAt: new Date().toISOString()
+      };
+    });
 
     // Seed a standard Math Exam
     const examQuestionsIds = [1, 2, 5, 6, 9, 10, 13, 14, 16, 17, 3, 7, 11, 15, 18, 4, 8, 12, 19];
@@ -353,6 +436,7 @@ class Database {
       durationMinutes: 45,
       shuffleOptions: true,
       shuffleQuestions: true,
+      folderId: 5,
       startTime: new Date(Date.now() - 3600 * 1000 * 24).toISOString(),
       endTime: new Date(Date.now() + 3600 * 1000 * 24 * 7).toISOString(),
       matrixConfig: {
@@ -412,6 +496,7 @@ class Database {
 
     const initialDb: DatabaseSchema = {
       users,
+      folders: [...INITIAL_FOLDERS],
       questions,
       exams: [initialExam],
       examQuestions,
@@ -576,14 +661,124 @@ class Database {
     return true;
   }
 
+  // --- Folders (Thư mục Câu hỏi & Thư mục Đề thi) ---
+  public getFolders(type?: FolderType) {
+    let list = [...this.data.folders];
+    if (type) {
+      list = list.filter(f => f.type === type);
+    }
+    return list.map(f => {
+      let itemCount = 0;
+      if (f.type === 'question') {
+        itemCount = this.data.questions.filter(q => q.folderId === f.id).length;
+      } else if (f.type === 'exam') {
+        itemCount = this.data.exams.filter(e => e.folderId === f.id).length;
+      }
+      return {
+        ...f,
+        itemCount
+      };
+    });
+  }
+
+  public getFolderById(id: number) {
+    const f = this.data.folders.find(item => item.id === id);
+    if (!f) return null;
+    let itemCount = 0;
+    if (f.type === 'question') {
+      itemCount = this.data.questions.filter(q => q.folderId === f.id).length;
+    } else {
+      itemCount = this.data.exams.filter(e => e.folderId === f.id).length;
+    }
+    return { ...f, itemCount };
+  }
+
+  public createFolder(folder: { name: string; type: FolderType; description?: string; color?: string }) {
+    const nextId = this.data.folders.length ? Math.max(...this.data.folders.map(f => f.id)) + 1 : 1;
+    const newFolder: Folder = {
+      id: nextId,
+      name: folder.name.trim(),
+      type: folder.type,
+      description: folder.description?.trim() || '',
+      color: folder.color || (folder.type === 'question' ? 'indigo' : 'rose'),
+      createdAt: new Date().toISOString()
+    };
+    this.data.folders.push(newFolder);
+    this.save();
+    return { ...newFolder, itemCount: 0 };
+  }
+
+  public updateFolder(id: number, updates: Partial<Folder>) {
+    const idx = this.data.folders.findIndex(f => f.id === id);
+    if (idx === -1) return null;
+    this.data.folders[idx] = {
+      ...this.data.folders[idx],
+      ...updates,
+      id
+    };
+    this.save();
+    return this.getFolderById(id);
+  }
+
+  public deleteFolder(id: number) {
+    const idx = this.data.folders.findIndex(f => f.id === id);
+    if (idx === -1) return false;
+    const folder = this.data.folders[idx];
+    this.data.folders.splice(idx, 1);
+    // Unassign questions & exams from this deleted folder
+    if (folder.type === 'question') {
+      this.data.questions.forEach(q => {
+        if (q.folderId === id) q.folderId = null;
+      });
+    } else if (folder.type === 'exam') {
+      this.data.exams.forEach(e => {
+        if (e.folderId === id) e.folderId = null;
+      });
+    }
+    this.save();
+    return true;
+  }
+
+  public moveQuestionsToFolder(questionIds: number[], folderId: number | null) {
+    let modified = 0;
+    this.data.questions.forEach(q => {
+      if (questionIds.includes(q.id)) {
+        q.folderId = folderId;
+        modified++;
+      }
+    });
+    this.save();
+    return { success: true, count: modified };
+  }
+
+  public moveExamsToFolder(examIds: number[], folderId: number | null) {
+    let modified = 0;
+    this.data.exams.forEach(e => {
+      if (examIds.includes(e.id)) {
+        e.folderId = folderId;
+        modified++;
+      }
+    });
+    this.save();
+    return { success: true, count: modified };
+  }
+
   // --- Questions ---
-  public getQuestions(filters?: { topic?: string; level?: QuestionLevel; search?: string }) {
+  public getQuestions(filters?: { topic?: string; level?: QuestionLevel; search?: string; folderId?: string | number }) {
     let result = [...this.data.questions];
     if (filters?.topic && filters.topic !== 'all') {
       result = result.filter(q => q.topic === filters.topic);
     }
     if (filters?.level && filters.level !== ('all' as any)) {
       result = result.filter(q => q.level === filters.level);
+    }
+    if (filters?.folderId !== undefined && filters.folderId !== 'all') {
+      if (filters.folderId === 'uncategorized' || filters.folderId === null || filters.folderId === 0 || filters.folderId === '0') {
+        result = result.filter(q => !q.folderId);
+      } else {
+        const fId = Number(filters.folderId);
+        result = result.filter(q => q.folderId === fId);
+      }
     }
     if (filters?.search) {
       const term = filters.search.toLowerCase();
@@ -593,23 +788,39 @@ class Database {
         q.topic.toLowerCase().includes(term)
       );
     }
-    return result;
+
+    // Attach folderName
+    return result.map(q => {
+      const folder = q.folderId ? this.data.folders.find(f => f.id === q.folderId) : null;
+      return {
+        ...q,
+        folderName: folder?.name
+      };
+    });
   }
 
   public getQuestionById(id: number) {
-    return this.data.questions.find(q => q.id === id);
+    const q = this.data.questions.find(item => item.id === id);
+    if (!q) return null;
+    const folder = q.folderId ? this.data.folders.find(f => f.id === q.folderId) : null;
+    return {
+      ...q,
+      folderName: folder?.name
+    };
   }
 
   public createQuestion(question: Omit<Question, 'id' | 'createdAt'>) {
     const nextId = this.data.questions.length ? Math.max(...this.data.questions.map(q => q.id)) + 1 : 1;
     const newQuestion: Question = {
       ...question,
+      folderId: question.folderId ?? null,
       id: nextId,
       createdAt: new Date().toISOString()
     };
     this.data.questions.push(newQuestion);
     this.save();
-    return newQuestion;
+    const folder = newQuestion.folderId ? this.data.folders.find(f => f.id === newQuestion.folderId) : null;
+    return { ...newQuestion, folderName: folder?.name };
   }
 
   public createQuestionsBulk(questions: Omit<Question, 'id' | 'createdAt'>[]) {
@@ -619,11 +830,13 @@ class Database {
     for (const q of questions) {
       const newQ: Question = {
         ...q,
+        folderId: q.folderId ?? null,
         id: nextId++,
         createdAt: now
       };
       this.data.questions.push(newQ);
-      createdList.push(newQ);
+      const folder = newQ.folderId ? this.data.folders.find(f => f.id === newQ.folderId) : null;
+      createdList.push({ ...newQ, folderName: folder?.name });
     }
     this.save();
     return createdList;
@@ -638,7 +851,7 @@ class Database {
       id
     };
     this.save();
-    return this.data.questions[idx];
+    return this.getQuestionById(id);
   }
 
   public deleteQuestion(id: number) {
@@ -661,6 +874,7 @@ class Database {
     shuffleQuestions?: boolean;
     startTime?: string;
     endTime?: string;
+    folderId?: number | null;
     matrix: {
       nhanBiet: number;
       thongHieu: number;
@@ -723,6 +937,7 @@ class Database {
     const finalQuestions = params.shuffleQuestions !== false ? shuffle(selectedQuestions) : selectedQuestions;
 
     const nextExamId = this.data.exams.length ? Math.max(...this.data.exams.map(e => e.id)) + 1 : 1;
+    const folder = params.folderId ? this.data.folders.find(f => f.id === params.folderId) : null;
     const newExam: Exam = {
       id: nextExamId,
       title: params.title,
@@ -731,6 +946,8 @@ class Database {
       durationMinutes: params.durationMinutes || 45,
       shuffleOptions: params.shuffleOptions ?? true,
       shuffleQuestions: params.shuffleQuestions ?? true,
+      folderId: params.folderId ?? null,
+      folderName: folder?.name,
       startTime: params.startTime,
       endTime: params.endTime,
       matrixConfig: {
@@ -761,11 +978,22 @@ class Database {
   }
 
   // --- Exams ---
-  public getExams() {
-    return this.data.exams.map(e => {
+  public getExams(filters?: { folderId?: string | number }) {
+    let exams = [...this.data.exams];
+    if (filters?.folderId !== undefined && filters.folderId !== 'all') {
+      if (filters.folderId === 'uncategorized' || filters.folderId === null || filters.folderId === 0 || filters.folderId === '0') {
+        exams = exams.filter(e => !e.folderId);
+      } else {
+        const fId = Number(filters.folderId);
+        exams = exams.filter(e => e.folderId === fId);
+      }
+    }
+    return exams.map(e => {
       const qRelations = this.data.examQuestions.filter(eq => eq.examId === e.id);
+      const folder = e.folderId ? this.data.folders.find(f => f.id === e.folderId) : null;
       return {
         ...e,
+        folderName: folder?.name,
         totalQuestions: qRelations.length
       };
     });
@@ -782,14 +1010,32 @@ class Database {
     const questions: Question[] = [];
     for (const rel of relations) {
       const q = this.data.questions.find(item => item.id === rel.questionId);
-      if (q) questions.push(q);
+      if (q) {
+        const folder = q.folderId ? this.data.folders.find(f => f.id === q.folderId) : null;
+        questions.push({ ...q, folderName: folder?.name });
+      }
     }
+
+    const folder = exam.folderId ? this.data.folders.find(f => f.id === exam.folderId) : null;
 
     return {
       ...exam,
+      folderName: folder?.name,
       questions,
       totalQuestions: questions.length
     };
+  }
+
+  public updateExam(id: number, updates: Partial<Exam>) {
+    const idx = this.data.exams.findIndex(e => e.id === id);
+    if (idx === -1) return null;
+    this.data.exams[idx] = {
+      ...this.data.exams[idx],
+      ...updates,
+      id
+    };
+    this.save();
+    return this.getExamById(id);
   }
 
   public deleteExam(id: number) {

@@ -1,16 +1,50 @@
 import React, { useState, useEffect } from 'react';
-import { Question, QuestionLevel, LEVEL_LABELS, COMMON_TOPICS } from '../../types.js';
+import { Question, QuestionLevel, LEVEL_LABELS, COMMON_TOPICS, Folder } from '../../types.js';
 import { api } from '../../services/api.js';
 import { MathView } from '../MathView.js';
-import { Plus, Search, Filter, Trash2, Edit3, CheckCircle2, ChevronDown, ChevronUp, RefreshCw, Eye, UploadCloud, FileText, Sparkles, Check } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Filter,
+  Trash2,
+  Edit3,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Eye,
+  UploadCloud,
+  FileText,
+  Sparkles,
+  Check,
+  Folder as FolderIcon,
+  FolderInput,
+  FolderPlus,
+  CheckSquare,
+  Square
+} from 'lucide-react';
 import { ImportDocumentModal } from './ImportDocumentModal.js';
 import { DocumentUploadSection } from './DocumentUploadSection.js';
+import { FolderBar } from './FolderBar.js';
+import { FolderModal, FOLDER_COLORS } from './FolderModal.js';
+import { MoveToFolderModal } from './MoveToFolderModal.js';
 
 export const QuestionBank: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
+
+  // Folder states
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<'all' | 'uncategorized' | number>('all');
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [questionsToMove, setQuestionsToMove] = useState<number[]>([]);
+
+  // Batch multi-select state
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>([]);
 
   // Filters
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
@@ -27,6 +61,7 @@ export const QuestionBank: React.FC = () => {
   // Form State
   const [formTopic, setFormTopic] = useState(COMMON_TOPICS[0]);
   const [formLevel, setFormLevel] = useState<QuestionLevel>('nhan_biet');
+  const [formFolderId, setFormFolderId] = useState<number | null>(null);
   const [formContent, setFormContent] = useState('');
   const [formOptionA, setFormOptionA] = useState('');
   const [formOptionB, setFormOptionB] = useState('');
@@ -37,6 +72,16 @@ export const QuestionBank: React.FC = () => {
   const [activeInput, setActiveInput] = useState<'content' | 'optionA' | 'optionB' | 'optionC' | 'optionD' | 'explanation'>('content');
   const [submitting, setSubmitting] = useState(false);
 
+  // Load folders
+  const loadFolders = async () => {
+    try {
+      const res = await api.getFolders('question');
+      setFolders(res.folders);
+    } catch (e) {
+      console.error('Error loading folders:', e);
+    }
+  };
+
   const fetchQuestions = async () => {
     try {
       setLoading(true);
@@ -44,7 +89,8 @@ export const QuestionBank: React.FC = () => {
       const res = await api.getQuestions({
         topic: selectedTopic,
         level: selectedLevel,
-        search: searchQuery
+        search: searchQuery,
+        folderId: selectedFolderId
       });
       setQuestions(res.questions);
     } catch (e: any) {
@@ -55,8 +101,13 @@ export const QuestionBank: React.FC = () => {
   };
 
   useEffect(() => {
+    loadFolders();
+  }, []);
+
+  useEffect(() => {
     fetchQuestions();
-  }, [selectedTopic, selectedLevel]);
+    setSelectedQuestionIds([]);
+  }, [selectedTopic, selectedLevel, selectedFolderId]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +123,7 @@ export const QuestionBank: React.FC = () => {
     setAddModalTab(mode);
     setFormTopic(COMMON_TOPICS[0]);
     setFormLevel('nhan_biet');
+    setFormFolderId(typeof selectedFolderId === 'number' ? selectedFolderId : null);
     setFormContent('');
     setFormOptionA('');
     setFormOptionB('');
@@ -86,6 +138,7 @@ export const QuestionBank: React.FC = () => {
     setIsModalOpen(false);
     setIsImportModalOpen(false);
     fetchQuestions();
+    loadFolders();
     setBannerMessage(`Đã thêm thành công ${count} câu hỏi từ file Word / PDF vào ngân hàng!`);
     setTimeout(() => setBannerMessage(null), 6000);
   };
@@ -95,6 +148,7 @@ export const QuestionBank: React.FC = () => {
     setAddModalTab('manual');
     setFormTopic(q.topic);
     setFormLevel(q.level);
+    setFormFolderId(q.folderId ?? null);
     setFormContent(q.content);
     setFormOptionA(q.optionA);
     setFormOptionB(q.optionB);
@@ -118,6 +172,7 @@ export const QuestionBank: React.FC = () => {
         await api.updateQuestion(editingQuestion.id, {
           topic: formTopic,
           level: formLevel,
+          folderId: formFolderId,
           content: formContent,
           optionA: formOptionA,
           optionB: formOptionB,
@@ -130,6 +185,7 @@ export const QuestionBank: React.FC = () => {
         await api.createQuestion({
           topic: formTopic,
           level: formLevel,
+          folderId: formFolderId,
           content: formContent,
           optionA: formOptionA,
           optionB: formOptionB,
@@ -141,6 +197,7 @@ export const QuestionBank: React.FC = () => {
       }
       setIsModalOpen(false);
       fetchQuestions();
+      loadFolders();
     } catch (err: any) {
       alert(err.message || 'Lỗi lưu câu hỏi');
     } finally {
@@ -153,8 +210,83 @@ export const QuestionBank: React.FC = () => {
     try {
       await api.deleteQuestion(id);
       fetchQuestions();
+      loadFolders();
     } catch (e: any) {
       alert(e.message || 'Không thể xóa câu hỏi');
+    }
+  };
+
+  // Folder CRUD handlers
+  const handleCreateOrUpdateFolder = async (data: { name: string; description: string; color: string }) => {
+    if (editingFolder) {
+      await api.updateFolder(editingFolder.id, data);
+      setBannerMessage(`Đã cập nhật thư mục "${data.name}"`);
+    } else {
+      const res = await api.createFolder({
+        name: data.name,
+        type: 'question',
+        description: data.description,
+        color: data.color
+      });
+      setSelectedFolderId(res.folder.id);
+      setBannerMessage(`Đã tạo thư mục mới "${res.folder.name}"`);
+    }
+    await loadFolders();
+    fetchQuestions();
+    setTimeout(() => setBannerMessage(null), 5000);
+  };
+
+  const handleDeleteFolder = async (folder: Folder) => {
+    if (!confirm(`Bạn có chắc muốn xóa thư mục "${folder.name}"?\nCác câu hỏi bên trong sẽ được chuyển về "Chưa phân loại" (không bị xóa).`)) {
+      return;
+    }
+    try {
+      await api.deleteFolder(folder.id);
+      if (selectedFolderId === folder.id) {
+        setSelectedFolderId('all');
+      }
+      await loadFolders();
+      fetchQuestions();
+      setBannerMessage(`Đã xóa thư mục "${folder.name}". Các câu hỏi đã chuyển về chưa phân loại.`);
+      setTimeout(() => setBannerMessage(null), 5000);
+    } catch (e: any) {
+      alert(e.message || 'Không thể xóa thư mục');
+    }
+  };
+
+  // Move items to folder handler
+  const handleConfirmMoveToFolder = async (targetFolderId: number | null) => {
+    if (questionsToMove.length === 0) return;
+    const res = await api.moveQuestionsToFolder(questionsToMove, targetFolderId);
+    setBannerMessage(res.message);
+    setSelectedQuestionIds([]);
+    await loadFolders();
+    fetchQuestions();
+    setTimeout(() => setBannerMessage(null), 5000);
+  };
+
+  const openMoveModalForSelected = () => {
+    if (selectedQuestionIds.length === 0) return;
+    setQuestionsToMove(selectedQuestionIds);
+    setIsMoveModalOpen(true);
+  };
+
+  const openMoveModalForSingle = (questionId: number) => {
+    setQuestionsToMove([questionId]);
+    setIsMoveModalOpen(true);
+  };
+
+  const toggleSelectQuestion = (id: number) => {
+    setSelectedQuestionIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (selectedQuestionIds.length === questions.length) {
+      setSelectedQuestionIds([]);
+    } else {
+      setSelectedQuestionIds(questions.map(q => q.id));
     }
   };
 
@@ -162,6 +294,7 @@ export const QuestionBank: React.FC = () => {
     if (!confirm('Khôi phục lại toàn bộ ngân hàng câu hỏi mẫu chuẩn THPT Quốc Gia?')) return;
     try {
       await api.resetSampleData();
+      loadFolders();
       fetchQuestions();
       alert('Đã khôi phục dữ liệu mẫu thành công!');
     } catch (e: any) {
@@ -178,17 +311,17 @@ export const QuestionBank: React.FC = () => {
       optionD: setFormOptionD,
       explanation: setFormExplanation,
     };
-    const values = {
-      content: formContent,
-      optionA: formOptionA,
-      optionB: formOptionB,
-      optionC: formOptionC,
-      optionD: formOptionD,
-      explanation: formExplanation,
-    };
-
-    setters[activeInput]((prev: string) => prev + snippet);
+    const currentSetter = setters[activeInput];
+    if (currentSetter) {
+      currentSetter(prev => prev ? `${prev} ${snippet}` : snippet);
+    }
   };
+
+  // Counts for folders
+  const totalCount = folders.reduce((sum, f) => sum + (f.itemCount ?? 0), 0);
+  const uncategorizedFolder = folders.find(f => f.id === 0);
+  const uncategorizedCount = uncategorizedFolder?.itemCount ?? 0;
+  const activeFolderObj = typeof selectedFolderId === 'number' ? folders.find(f => f.id === selectedFolderId) : null;
 
   return (
     <div className="space-y-6">
@@ -251,8 +384,106 @@ export const QuestionBank: React.FC = () => {
         </div>
       )}
 
+      {/* Folder Bar */}
+      <FolderBar
+        folders={folders}
+        selectedFolderId={selectedFolderId}
+        onSelectFolder={setSelectedFolderId}
+        onOpenCreateModal={() => {
+          setEditingFolder(null);
+          setIsFolderModalOpen(true);
+        }}
+        onOpenEditModal={(folder) => {
+          setEditingFolder(folder);
+          setIsFolderModalOpen(true);
+        }}
+        onDeleteFolder={handleDeleteFolder}
+        folderType="question"
+        totalCount={totalCount}
+        uncategorizedCount={uncategorizedCount}
+      />
+
+      {/* Active Folder Header */}
+      {activeFolderObj && (
+        <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 px-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="w-3.5 h-3.5 rounded-full shrink-0"
+              style={{ backgroundColor: activeFolderObj.color || '#4f46e5' }}
+            />
+            <div>
+              <span className="font-bold text-slate-800 text-sm">{activeFolderObj.name}</span>
+              {activeFolderObj.description && (
+                <span className="text-xs text-slate-500 ml-2">— {activeFolderObj.description}</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setEditingFolder(activeFolderObj);
+                setIsFolderModalOpen(true);
+              }}
+              className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 px-2 py-1 rounded-md hover:bg-white transition-colors"
+            >
+              Sửa thư mục
+            </button>
+            <button
+              onClick={() => handleDeleteFolder(activeFolderObj)}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-1 rounded-md hover:bg-white transition-colors"
+            >
+              Xóa thư mục
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Selection Action Bar */}
+      {selectedQuestionIds.length > 0 && (
+        <div className="p-3 bg-indigo-900 text-white rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-fade-in">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <CheckSquare className="w-4 h-4 text-indigo-300" />
+            <span>Đã chọn {selectedQuestionIds.length} câu hỏi</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openMoveModalForSelected}
+              className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+            >
+              <FolderInput className="w-3.5 h-3.5" />
+              Chuyển vào Thư mục...
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedQuestionIds([])}
+              className="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 text-xs rounded-lg transition-colors"
+            >
+              Bỏ chọn
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center gap-3">
+        {/* Select All Checkbox */}
+        {questions.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleSelectAllVisible}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors shrink-0"
+            title="Chọn / Bỏ chọn tất cả câu hỏi đang hiển thị"
+          >
+            {selectedQuestionIds.length > 0 && selectedQuestionIds.length === questions.length ? (
+              <CheckSquare className="w-4 h-4 text-indigo-600" />
+            ) : (
+              <Square className="w-4 h-4 text-slate-400" />
+            )}
+            <span>Chọn tất cả ({questions.length})</span>
+          </button>
+        )}
+
         {/* Search */}
         <form onSubmit={handleSearchSubmit} className="flex-1 relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -326,7 +557,21 @@ export const QuestionBank: React.FC = () => {
               >
                 {/* Meta Header */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Checkbox for batch move */}
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectQuestion(q.id)}
+                      className="p-1 hover:bg-slate-100 rounded-md transition-colors"
+                      title={selectedQuestionIds.includes(q.id) ? 'Bỏ chọn' : 'Chọn câu hỏi'}
+                    >
+                      {selectedQuestionIds.includes(q.id) ? (
+                        <CheckSquare className="w-4 h-4 text-indigo-600" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-300 hover:text-slate-400" />
+                      )}
+                    </button>
+
                     <span className="font-bold text-slate-800 text-sm px-2.5 py-1 bg-slate-100 rounded-lg">
                       Câu {idx + 1}
                     </span>
@@ -336,9 +581,39 @@ export const QuestionBank: React.FC = () => {
                     <span className="text-xs text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
                       {q.topic}
                     </span>
+
+                    {/* Folder Badge */}
+                    {q.folderName ? (
+                      <button
+                        type="button"
+                        onClick={() => openMoveModalForSingle(q.id)}
+                        className="text-xs px-2.5 py-0.5 rounded-md font-medium border bg-indigo-50/70 text-indigo-700 border-indigo-200 flex items-center gap-1.5 hover:bg-indigo-100 transition-colors"
+                        title="Bấm để chuyển thư mục"
+                      >
+                        <FolderIcon className="w-3 h-3 text-indigo-600 shrink-0" />
+                        <span className="max-w-[150px] truncate">{q.folderName}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openMoveModalForSingle(q.id)}
+                        className="text-xs px-2 py-0.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-dashed border-slate-300 flex items-center gap-1 transition-colors"
+                        title="Chưa phân loại - Bấm để chuyển vào thư mục"
+                      >
+                        <FolderInput className="w-3 h-3" />
+                        <span>Chưa phân loại</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openMoveModalForSingle(q.id)}
+                      className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 text-xs"
+                      title="Chuyển vào thư mục khác"
+                    >
+                      <FolderInput className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => openEditModal(q)}
                       className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
@@ -526,6 +801,39 @@ export const QuestionBank: React.FC = () => {
                 </div>
 
                 <form onSubmit={handleSaveQuestion} className="overflow-y-auto space-y-4 pr-1">
+                  {/* Folder Selector */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <FolderIcon className="w-3.5 h-3.5 text-indigo-600" />
+                        Thư mục lưu trữ câu hỏi
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingFolder(null);
+                          setIsFolderModalOpen(true);
+                        }}
+                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Tạo thư mục mới
+                      </button>
+                    </div>
+                    <select
+                      value={formFolderId ?? ''}
+                      onChange={(e) => setFormFolderId(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white"
+                    >
+                      <option value="">-- Chưa phân loại (Không thuộc thư mục nào) --</option>
+                      {folders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} ({f.itemCount ?? 0} câu)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Chủ đề môn Toán</label>
@@ -662,7 +970,37 @@ export const QuestionBank: React.FC = () => {
         onClose={() => setIsImportModalOpen(false)}
         onImportSuccess={(count) => {
           fetchQuestions();
+          loadFolders();
           alert(`Đã nhập thành công ${count} câu hỏi vào ngân hàng!`);
+        }}
+      />
+
+      {/* Folder Create / Edit Modal */}
+      <FolderModal
+        isOpen={isFolderModalOpen}
+        onClose={() => {
+          setIsFolderModalOpen(false);
+          setEditingFolder(null);
+        }}
+        onSubmit={handleCreateOrUpdateFolder}
+        folderType="question"
+        editingFolder={editingFolder}
+      />
+
+      {/* Move questions to folder modal */}
+      <MoveToFolderModal
+        isOpen={isMoveModalOpen}
+        onClose={() => {
+          setIsMoveModalOpen(false);
+          setQuestionsToMove([]);
+        }}
+        folders={folders}
+        itemCount={questionsToMove.length}
+        itemType="question"
+        onConfirmMove={handleConfirmMoveToFolder}
+        onOpenCreateFolder={() => {
+          setEditingFolder(null);
+          setIsFolderModalOpen(true);
         }}
       />
     </div>

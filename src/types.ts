@@ -11,6 +11,18 @@ export interface User {
 
 export type QuestionLevel = 'nhan_biet' | 'thong_hieu' | 'van_dung' | 'van_dung_cao';
 
+export type FolderType = 'question' | 'exam';
+
+export interface Folder {
+  id: number;
+  name: string;
+  type: FolderType;
+  description?: string;
+  color?: string; // e.g., 'indigo', 'emerald', 'amber', 'rose', 'sky', 'violet'
+  createdAt?: string;
+  itemCount?: number;
+}
+
 export interface Question {
   id: number;
   topic: string;
@@ -22,6 +34,8 @@ export interface Question {
   optionD: string;
   correctOption: 'A' | 'B' | 'C' | 'D';
   explanation: string;
+  folderId?: number | null;
+  folderName?: string;
   createdAt?: string;
 }
 
@@ -44,6 +58,8 @@ export interface Exam {
   shuffleQuestions: boolean;
   startTime?: string;
   endTime?: string;
+  folderId?: number | null;
+  folderName?: string;
   matrixConfig?: MatrixConfig;
   questions?: Question[];
   totalQuestions?: number;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from './db.js';
 import { generateToken, verifyPassword, hashPassword, authenticateToken, requireRole, AuthRequest } from './auth.js';
-import { QuestionLevel } from '../src/types.js';
+import { QuestionLevel, FolderType } from '../src/types.js';
 import { parseUploadedDocument } from './documentParser.js';
 
 export const apiRouter = Router();
@@ -100,13 +100,80 @@ apiRouter.get('/auth/me', authenticateToken, (req: AuthRequest, res) => {
   return res.json({ user: req.user });
 });
 
+// --- Folder Management Routes (Thư mục Câu hỏi & Đề thi) ---
+apiRouter.get('/folders', (req, res) => {
+  const { type } = req.query;
+  const folders = db.getFolders(type as FolderType);
+  return res.json({ folders });
+});
+
+apiRouter.get('/folders/:id', (req, res) => {
+  const folder = db.getFolderById(Number(req.params.id));
+  if (!folder) return res.status(404).json({ error: 'Thư mục không tồn tại.' });
+  return res.json({ folder });
+});
+
+apiRouter.post('/folders', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const { name, type, description, color } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Tên thư mục không được để trống.' });
+    }
+    if (!type || !['question', 'exam'].includes(type)) {
+      return res.status(400).json({ error: 'Loại thư mục phải là "question" hoặc "exam".' });
+    }
+
+    const newFolder = db.createFolder({
+      name: name.trim(),
+      type,
+      description,
+      color
+    });
+
+    return res.status(201).json({
+      folder: newFolder,
+      message: `Đã tạo thư mục "${newFolder.name}" thành công.`
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+apiRouter.put('/folders/:id', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, description, color } = req.body;
+    const updated = db.updateFolder(id, {
+      ...(name ? { name: name.trim() } : {}),
+      ...(description !== undefined ? { description: description.trim() } : {}),
+      ...(color ? { color } : {})
+    });
+    if (!updated) return res.status(404).json({ error: 'Thư mục không tồn tại.' });
+    return res.json({ folder: updated, message: 'Cập nhật thư mục thành công.' });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+apiRouter.delete('/folders/:id', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const success = db.deleteFolder(id);
+    if (!success) return res.status(404).json({ error: 'Thư mục không tồn tại.' });
+    return res.json({ success: true, message: 'Đã xóa thư mục thành công.' });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // --- Question Bank Routes ---
 apiRouter.get('/questions', (req, res) => {
-  const { topic, level, search } = req.query;
+  const { topic, level, search, folderId } = req.query;
   const list = db.getQuestions({
     topic: topic as string,
     level: level as QuestionLevel,
-    search: search as string
+    search: search as string,
+    folderId: folderId as string
   });
   return res.json({ questions: list, total: list.length });
 });
@@ -119,7 +186,7 @@ apiRouter.get('/questions/:id', (req, res) => {
 
 apiRouter.post('/questions', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
   try {
-    const { topic, level, content, optionA, optionB, optionC, optionD, correctOption, explanation } = req.body;
+    const { topic, level, content, optionA, optionB, optionC, optionD, correctOption, explanation, folderId } = req.body;
     if (!topic || !level || !content || !optionA || !optionB || !optionC || !optionD || !correctOption) {
       return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin câu hỏi và 4 đáp án.' });
     }
@@ -133,10 +200,30 @@ apiRouter.post('/questions', authenticateToken, requireRole('teacher', 'admin'),
       optionC,
       optionD,
       correctOption,
-      explanation: explanation || ''
+      explanation: explanation || '',
+      folderId: folderId ? Number(folderId) : null
     });
 
     return res.json({ question: newQ, message: 'Thêm câu hỏi thành công.' });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// Move questions to folder
+apiRouter.post('/questions/move', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const { questionIds, folderId } = req.body;
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một câu hỏi để chuyển.' });
+    }
+    const targetFolderId = folderId ? Number(folderId) : null;
+    const result = db.moveQuestionsToFolder(questionIds, targetFolderId);
+    return res.json({
+      success: true,
+      count: result.count,
+      message: `Đã chuyển ${result.count} câu hỏi vào thư mục!`
+    });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
   }
@@ -174,11 +261,12 @@ apiRouter.post('/questions/import-document', authenticateToken, requireRole('tea
 // Bulk insert approved questions into bank
 apiRouter.post('/questions/bulk', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
   try {
-    const { questions } = req.body;
+    const { questions, folderId } = req.body;
     if (!Array.isArray(questions) || questions.length === 0) {
       return res.status(400).json({ error: 'Danh sách câu hỏi không hợp lệ hoặc đang trống.' });
     }
 
+    const defaultFolderId = folderId ? Number(folderId) : null;
     const validQuestions = questions.map(q => ({
       topic: q.topic || 'Hàm số & Đồ thị',
       level: q.level || 'nhan_biet',
@@ -188,7 +276,8 @@ apiRouter.post('/questions/bulk', authenticateToken, requireRole('teacher', 'adm
       optionC: q.optionC,
       optionD: q.optionD,
       correctOption: q.correctOption || 'A',
-      explanation: q.explanation || ''
+      explanation: q.explanation || '',
+      folderId: q.folderId !== undefined ? (q.folderId ? Number(q.folderId) : null) : defaultFolderId
     }));
 
     const created = db.createQuestionsBulk(validQuestions);
@@ -223,7 +312,8 @@ apiRouter.delete('/questions/:id', authenticateToken, requireRole('teacher', 'ad
 
 // --- Exams & Matrix Auto Generation Routes ---
 apiRouter.get('/exams', (req, res) => {
-  const exams = db.getExams();
+  const { folderId } = req.query;
+  const exams = db.getExams({ folderId: folderId as string });
   return res.json({ exams });
 });
 
@@ -235,7 +325,7 @@ apiRouter.get('/exams/:id', (req, res) => {
 
 apiRouter.post('/exams/generate-matrix', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
   try {
-    const { title, description, code, durationMinutes, shuffleOptions, shuffleQuestions, startTime, endTime, matrix } = req.body;
+    const { title, description, code, durationMinutes, shuffleOptions, shuffleQuestions, startTime, endTime, matrix, folderId } = req.body;
     if (!title || !code || !matrix) {
       return res.status(400).json({ error: 'Vui lòng điền tên đề thi, mã đề và cấu hình ma trận.' });
     }
@@ -254,6 +344,7 @@ apiRouter.post('/exams/generate-matrix', authenticateToken, requireRole('teacher
       shuffleQuestions: !!shuffleQuestions,
       startTime,
       endTime,
+      folderId: folderId ? Number(folderId) : null,
       matrix
     });
 
@@ -264,6 +355,35 @@ apiRouter.post('/exams/generate-matrix', authenticateToken, requireRole('teacher
     });
   } catch (e: any) {
     return res.status(400).json({ error: e.message || 'Lỗi khi sinh đề theo ma trận.' });
+  }
+});
+
+apiRouter.put('/exams/:id', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const updated = db.updateExam(id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Đề thi không tồn tại.' });
+    return res.json({ exam: updated, message: 'Cập nhật đề thi thành công.' });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+apiRouter.post('/exams/move', authenticateToken, requireRole('teacher', 'admin'), (req, res) => {
+  try {
+    const { examIds, folderId } = req.body;
+    if (!Array.isArray(examIds) || examIds.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một đề thi để chuyển.' });
+    }
+    const targetFolderId = folderId ? Number(folderId) : null;
+    const result = db.moveExamsToFolder(examIds, targetFolderId);
+    return res.json({
+      success: true,
+      count: result.count,
+      message: `Đã chuyển ${result.count} đề thi vào thư mục!`
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
